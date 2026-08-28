@@ -29,6 +29,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             return
+        if self.path == "/refused":
+            self.send_response(400)
+            self.end_headers()
+            return
         typed = self.path.startswith("/typed")
         content_type = "audio/mp4" if typed else "application/octet-stream"
         self.send_response(200)
@@ -55,10 +59,11 @@ def server():
 
 
 class FakeClient:
-    def __init__(self, attaches, *, file_url=None, video_url=None) -> None:
+    def __init__(self, attaches, *, file_url=None, video_url=None, external=None) -> None:
         self.message = SimpleNamespace(id=7, chat_id=1, attaches=attaches)
         self.file_url = file_url
         self.video_url = video_url
+        self.external = external
         self.calls = []
 
     async def get_message(self, chat_id, message_id):
@@ -71,7 +76,7 @@ class FakeClient:
 
     async def get_video_by_id(self, chat_id, message_id, video_id):
         self.calls.append(("get_video_by_id", chat_id, message_id, video_id))
-        return SimpleNamespace(url=self.video_url, external=None, cache=False)
+        return SimpleNamespace(url=self.video_url, external=self.external, cache=False)
 
 
 def make_ctx(client):
@@ -144,6 +149,21 @@ def test_external_video_without_url_is_reported(tmp_path, monkeypatch) -> None:
     run = tool("download_attachment", tmp_path, monkeypatch)
 
     with pytest.raises(RuntimeError, match="direct url"):
+        asyncio.run(run(make_ctx(client), chat_id=1, message_id=7))
+
+
+def test_externally_hosted_video_reports_its_source(server, tmp_path, monkeypatch) -> None:
+    # видео-репосты живут на инфраструктуре Одноклассников: MAX отдаёт ссылку,
+    # а CDN на неё отвечает отказом
+    attach = SimpleNamespace(type="VIDEO", video_id=3, token="t")
+    client = FakeClient(
+        [attach],
+        video_url=f"{server}/refused",
+        external="https://m.ok.ru/video/9826404491253",
+    )
+    run = tool("download_attachment", tmp_path, monkeypatch)
+
+    with pytest.raises(RuntimeError, match="hosted outside MAX"):
         asyncio.run(run(make_ctx(client), chat_id=1, message_id=7))
 
 

@@ -3,6 +3,7 @@ import pathlib
 from dataclasses import dataclass
 from typing import Any
 
+import aiohttp
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 
@@ -24,6 +25,7 @@ class _Source:
     url: str
     filename: str
     expected_size: int | None
+    external: str | None = None
 
 
 def _download_roots() -> tuple[pathlib.Path, ...]:
@@ -61,12 +63,19 @@ async def _resolve_source(
             raise ValueError("video attachment has no video_id")
         request = await client.get_video_by_id(chat_id, message_id, video_id)
         url = _field(request, "url")
+        external = _field(request, "external")
+        external = external if isinstance(external, str) else None
         if not url:
             raise RuntimeError(
-                "MAX did not return a direct url for this video "
-                "(external videos are not downloadable)"
+                "MAX did not return a direct url for this video"
+                + (f"; it is hosted externally at {external}" if external else "")
             )
-        return _Source(url=url, filename=f"video_{video_id}.mp4", expected_size=None)
+        return _Source(
+            url=url,
+            filename=f"video_{video_id}.mp4",
+            expected_size=None,
+            external=external,
+        )
 
     if kind == "PHOTO":
         url = _field(attach, "base_url")
@@ -105,8 +114,6 @@ def _with_extension(filename: str, kind: str, content_type: str | None) -> str:
 
 
 async def _fetch(url: str, directory: pathlib.Path, source: _Source, kind: str) -> dict[str, Any]:
-    import aiohttp
-
     timeout = aiohttp.ClientTimeout(total=None, sock_connect=30, sock_read=120)
     async with (
         aiohttp.ClientSession(timeout=timeout) as session,
@@ -187,7 +194,15 @@ def register(mcp: FastMCP) -> None:
         attach = attaches[attach_index]
         kind = enum_text(_field(attach, "type")) or "UNKNOWN"
         source = await _resolve_source(client, chat_id, message_id, attach, kind)
-        result = await _fetch(source.url, directory, source, kind)
+        try:
+            result = await _fetch(source.url, directory, source, kind)
+        except aiohttp.ClientResponseError as exc:
+            if source.external:
+                raise RuntimeError(
+                    "video is hosted outside MAX and its direct link is refused "
+                    f"({exc.status}); the source is {source.external}"
+                ) from exc
+            raise
 
         result.update(
             {
