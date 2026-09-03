@@ -72,7 +72,7 @@ async def _resolve_source(
             )
         return _Source(
             url=url,
-            filename=f"video_{video_id}.mp4",
+            filename=f"video_{video_id}",
             expected_size=None,
             external=external,
         )
@@ -82,14 +82,14 @@ async def _resolve_source(
         if not url:
             raise RuntimeError("photo attachment has no base_url")
         photo_id = _field(attach, "photo_id") or "photo"
-        return _Source(url=url, filename=f"photo_{photo_id}.jpg", expected_size=None)
+        return _Source(url=url, filename=f"photo_{photo_id}", expected_size=None)
 
     if kind == "AUDIO":
         url = _field(attach, "url")
         if not url:
             raise RuntimeError("audio attachment has no url")
         audio_id = _field(attach, "audio_id") or "audio"
-        return _Source(url=url, filename=f"audio_{audio_id}.m4a", expected_size=None)
+        return _Source(url=url, filename=f"audio_{audio_id}", expected_size=None)
 
     raise ValueError(
         f"attachment of type {kind} carries no downloadable payload; "
@@ -97,20 +97,63 @@ async def _resolve_source(
     )
 
 
-def _with_extension(filename: str, kind: str, content_type: str | None) -> str:
-    """Дописывает расширение, когда имя пришло без него.
+def _sniff_extension(head: bytes, kind: str) -> str | None:
+    """Узнаёт формат по первым байтам файла.
 
-    Имя файлового вложения задал отправитель: если он прислал его без
-    расширения, своё не выдумывается.
+    MAX отдаёт картинки в WebP, а голосовые в Ogg/Opus, объявляя их обычными
+    photo и audio. Расширение, выведенное из типа вложения, в этих случаях
+    врёт, и дальше по цепочке файл открывают неверным разбором.
     """
-    if pathlib.Path(filename).suffix:
-        return filename
+    if head.startswith(b"RIFF") and head[8:12] == b"WEBP":
+        return ".webp"
+    if head.startswith(b"OggS"):
+        return ".ogg"
+    if head.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if head.startswith(b"GIF8"):
+        return ".gif"
+    if head.startswith(b"fLaC"):
+        return ".flac"
+    if head.startswith(b"ID3") or head[:2] in (b"\xff\xfb", b"\xff\xf3"):
+        return ".mp3"
+    if head[4:8] == b"ftyp":
+        brand = head[8:12]
+        if brand.startswith(b"M4A"):
+            return ".m4a"
+        if brand.startswith(b"qt"):
+            return ".mov"
+        return ".m4a" if kind == "AUDIO" else ".mp4"
+    if head.startswith(b"\x1aE\xdf\xa3"):
+        return ".webm"
+    if head.startswith(b"%PDF-"):
+        return ".pdf"
+    return None
+
+
+def _extension_for(kind: str, content_type: str | None, head: bytes) -> str:
+    """Выбирает расширение: сигнатура байт, затем Content-Type, затем тип вложения."""
+    sniffed = _sniff_extension(head, kind)
+    if sniffed:
+        return sniffed
     mime = (content_type or "").split(";")[0].strip().lower()
     if mime and mime != "application/octet-stream":
         guessed = mimetypes.guess_extension(mime)
         if guessed:
-            return filename + guessed
-    return filename + DEFAULT_EXT.get(kind, "")
+            return ".jpg" if guessed == ".jpe" else guessed
+    return DEFAULT_EXT.get(kind, "")
+
+
+def _with_extension(filename: str, kind: str, content_type: str | None, head: bytes) -> str:
+    """Дописывает расширение, когда имя пришло без него.
+
+    Имя файлового вложения задал отправитель: если он прислал его без
+    расширения, своё не выдумывается сверх того, что видно по байтам.
+    """
+    if pathlib.Path(filename).suffix:
+        return filename
+    return filename + _extension_for(kind, content_type, head)
 
 
 async def _fetch(url: str, directory: pathlib.Path, source: _Source, kind: str) -> dict[str, Any]:
@@ -125,19 +168,22 @@ async def _fetch(url: str, directory: pathlib.Path, source: _Source, kind: str) 
             raise ValueError(
                 f"attachment exceeds {MAX_DOWNLOAD_BYTES} bytes (declared {declared})"
             )
-        filename = _with_extension(
-            source.filename, kind, response.headers.get("Content-Type")
-        )
-        target = unique_path(directory, filename)
-        partial = target.with_name(target.name + ".part")
+        partial = unique_path(directory, safe_filename(source.filename, "download") + ".part")
         written = 0
+        head = b""
         try:
             with partial.open("wb") as stream:
                 async for chunk in response.content.iter_chunked(CHUNK_BYTES):
+                    if not head:
+                        head = bytes(chunk[:16])
                     written += len(chunk)
                     if written > MAX_DOWNLOAD_BYTES:
                         raise ValueError(f"attachment exceeds {MAX_DOWNLOAD_BYTES} bytes")
                     stream.write(chunk)
+            filename = _with_extension(
+                source.filename, kind, response.headers.get("Content-Type"), head
+            )
+            target = unique_path(directory, filename)
             partial.replace(target)
         except BaseException:
             partial.unlink(missing_ok=True)
