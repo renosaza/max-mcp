@@ -9,7 +9,7 @@ def _dump(obj: Any) -> dict[str, Any]:
         return obj
     dump = getattr(obj, "model_dump", None)
     if callable(dump):
-        dumped = dump(mode="json", exclude_none=True)
+        dumped = dump(mode="python", exclude_none=True)
         return dumped if isinstance(dumped, dict) else {}
     try:
         return vars(obj)

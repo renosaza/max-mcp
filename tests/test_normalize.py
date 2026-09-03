@@ -27,6 +27,46 @@ def test_chat_keeps_falsy_values() -> None:
     assert result["owner_id"] == 0
 
 
+def test_chat_dump_does_not_decode_unneeded_bytes() -> None:
+    class ChatWithBinaryNestedValue:
+        def __init__(self) -> None:
+            self.id = 1
+            self.title = "chat"
+            self.type = "CHAT"
+            self.last_event_time = 2
+            self.participants_count = 3
+            self.description = ""
+            self.owner = 4
+
+        def model_dump(self, *, mode: str, exclude_none: bool) -> dict:
+            assert exclude_none is True
+            if mode == "json":
+                raise UnicodeDecodeError("utf-8", b"\x90", 0, 1, "invalid utf-8")
+            assert mode == "python"
+            return {
+                "id": self.id,
+                "title": self.title,
+                "type": self.type,
+                "last_event_time": self.last_event_time,
+                "participants_count": self.participants_count,
+                "description": self.description,
+                "owner": self.owner,
+                "last_message": {"binary": b"\x90"},
+            }
+
+    result = chat_to_dict(ChatWithBinaryNestedValue())
+
+    assert result == {
+        "id": 1,
+        "title": "chat",
+        "type": "CHAT",
+        "last_event_time": 2,
+        "participants_count": 3,
+        "description": "",
+        "owner_id": 4,
+    }
+
+
 def test_reply_enum_is_normalized() -> None:
     message = SimpleNamespace(
         id=1,

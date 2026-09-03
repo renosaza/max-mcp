@@ -1,4 +1,5 @@
 import asyncio
+import errno
 import os
 import pathlib
 import stat
@@ -15,6 +16,13 @@ SESSION_FILE = "session.db"
 KIND_FILE = "session.kind"
 PHONE_FILE = "session.phone"
 START_TIMEOUT_SECONDS = 30
+BEST_EFFORT_CHMOD_ENV = "MAX_MCP_BEST_EFFORT_CHMOD"
+ALLOW_SYNTHETIC_UID_ENV = "MAX_MCP_ALLOW_SYNTHETIC_UID"
+CHMOD_UNSUPPORTED_ERRNOS = {
+    errno.EPERM,
+    getattr(errno, "EOPNOTSUPP", errno.ENOTSUP),
+    errno.ENOTSUP,
+}
 
 
 @dataclass
@@ -28,10 +36,10 @@ def _check_session_dir() -> None:
         raise RuntimeError(f"{SESSION_DIR} is a symlink; refusing to use")
     if not stat.S_ISDIR(st.st_mode):
         raise RuntimeError(f"{SESSION_DIR} is not a directory")
-    if st.st_uid != os.getuid():
+    if not _owner_matches_current_user(st.st_uid):
         raise RuntimeError(f"{SESSION_DIR} is not owned by current user")
     if st.st_mode & 0o077:
-        SESSION_DIR.chmod(0o700)
+        _chmod_path(SESSION_DIR, 0o700)
 
 
 def _check_session_file(path: pathlib.Path) -> None:
@@ -40,10 +48,30 @@ def _check_session_file(path: pathlib.Path) -> None:
         raise RuntimeError(f"{path} is a symlink; refusing to use")
     if not stat.S_ISREG(st.st_mode):
         raise RuntimeError(f"{path} is not a regular file")
-    if st.st_uid != os.getuid():
+    if not _owner_matches_current_user(st.st_uid):
         raise RuntimeError(f"{path} is not owned by current user")
     if st.st_mode & 0o077:
-        path.chmod(0o600)
+        _chmod_path(path, 0o600)
+
+
+def _owner_matches_current_user(owner_uid: int) -> bool:
+    return owner_uid == os.getuid() or _env_flag_enabled(ALLOW_SYNTHETIC_UID_ENV)
+
+
+def _chmod_path(path: pathlib.Path, mode: int) -> None:
+    try:
+        path.chmod(mode)
+    except OSError as exc:
+        if (
+            _env_flag_enabled(BEST_EFFORT_CHMOD_ENV)
+            and exc.errno in CHMOD_UNSUPPORTED_ERRNOS
+        ):
+            return
+        raise
+
+
+def _env_flag_enabled(name: str) -> bool:
+    return os.environ.get(name, "").lower() in {"1", "true", "yes", "on"}
 
 
 def _read_secret(path: pathlib.Path) -> str | None:
