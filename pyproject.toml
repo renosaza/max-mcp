@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Local stdio MCP server exposing MAX messenger (user session) to Claude Code"
 requires-python = ">=3.11,<3.14"
 dependencies = [
+  "aiohttp>=3.9",
   "mcp[cli]>=1.0",
   "maxapi-python>=2.1.2",
   "pydantic>=2.6",

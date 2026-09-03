@@ -24,7 +24,7 @@ def _value(d: dict[str, Any], key: str, obj: Any, attr: str | None = None) -> An
     return getattr(obj, attr or key, None)
 
 
-def _enum_text(value: Any) -> str | None:
+def enum_text(value: Any) -> str | None:
     if value is None:
         return None
     if isinstance(value, Enum):
@@ -47,7 +47,7 @@ def chat_to_dict(chat: Any) -> dict[str, Any]:
     return {
         "id": _value(d, "id", chat),
         "title": _value(d, "title", chat),
-        "type": _enum_text(_value(d, "type", chat)),
+        "type": enum_text(_value(d, "type", chat)),
         "last_event_time": _value(d, "last_event_time", chat),
         "participants_count": _value(d, "participants_count", chat),
         "description": _value(d, "description", chat),
@@ -65,7 +65,7 @@ def attach_to_dict(att: Any) -> dict[str, Any]:
 
 
 def _reply_to_id(msg: Any, d: dict[str, Any]) -> int | None:
-    msg_type = _enum_text(_value(d, "type", msg))
+    msg_type = enum_text(_value(d, "type", msg))
     if msg_type == "REPLY":
         return _value(d, "prev_message_id", msg)
     return None
@@ -79,7 +79,7 @@ def message_to_dict(msg: Any) -> dict[str, Any]:
         "sender": _entity_id(_value(d, "sender", msg)),
         "text": _value(d, "text", msg),
         "time": _value(d, "time", msg),
-        "type": _enum_text(_value(d, "type", msg)),
+        "type": enum_text(_value(d, "type", msg)),
         "reply_to_id": _reply_to_id(msg, d),
     }
     attaches = _value(d, "attaches", msg) or []
