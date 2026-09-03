@@ -1,18 +1,44 @@
+from datetime import date, datetime, time
 from enum import Enum
 from typing import Any
+
+from .compat import apply_pymax_patches
+
+apply_pymax_patches()
+
+# Превью картинок и waveform голосовых приходят сырыми байтами. Они не нужны
+# читателю ответа и не переживают JSON-сериализацию: mode="json" валится с
+# UnicodeDecodeError на первом же чате с картинкой. Поэтому дамп берётся
+# в mode="python", а несериализуемое приводится здесь.
+_BYTES_PLACEHOLDER = "<{size} bytes>"
+
+
+def _jsonable(value: Any) -> Any:
+    """Приводит дамп модели к типам, которые переживут JSON."""
+    if isinstance(value, bytes | bytearray):
+        return _BYTES_PLACEHOLDER.format(size=len(value))
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, datetime | date | time):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {key: _jsonable(item) for key, item in value.items()}
+    if isinstance(value, list | tuple | set | frozenset):
+        return [_jsonable(item) for item in value]
+    return value
 
 
 def _dump(obj: Any) -> dict[str, Any]:
     if obj is None:
         return {}
     if isinstance(obj, dict):
-        return obj
+        return _jsonable(obj)
     dump = getattr(obj, "model_dump", None)
     if callable(dump):
-        dumped = dump(mode="json", exclude_none=True)
-        return dumped if isinstance(dumped, dict) else {}
+        dumped = dump(mode="python", exclude_none=True)
+        return _jsonable(dumped) if isinstance(dumped, dict) else {}
     try:
-        return vars(obj)
+        return _jsonable(vars(obj))
     except TypeError:
         return {}
 
