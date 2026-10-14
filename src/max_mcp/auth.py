@@ -15,6 +15,8 @@ from pymax import (
     WebClient,
 )
 
+from .config import mobile_client_options, secure_client_config
+
 SESSION_DIR = pathlib.Path.home() / ".max-mcp"
 SESSION_FILE = "session.db"
 KIND_FILE = "session.kind"
@@ -74,7 +76,7 @@ def _mark_session(kind: str, phone: str | None = None) -> None:
 
 
 def _print_me(client: Any) -> None:
-    me = client.me
+    me = getattr(client.me, "contact", client.me)
     print(
         f"Вход выполнен: {getattr(me, 'first_name', '?')} "
         f"(id={getattr(me, 'id', '?')})",
@@ -110,6 +112,7 @@ async def _finish_login(client: Any, kind: str, phone: str | None = None) -> Non
 async def _login_qr() -> None:
     _ensure_session_dir()
     client = WebClient(
+        extra_config=secure_client_config(),
         work_dir=str(SESSION_DIR),
         session_name=SESSION_FILE,
         qr_provider=ConsoleQrHandler(),
@@ -121,6 +124,8 @@ async def _login_sms(phone: str) -> None:
     _ensure_session_dir()
     client = Client(
         phone=phone,
+        extra_config=secure_client_config(),
+        **mobile_client_options(),
         work_dir=str(SESSION_DIR),
         session_name=SESSION_FILE,
         sms_code_provider=ConsoleSmsCodeProvider(),

@@ -48,3 +48,16 @@ def test_cancellation_before_login_is_not_hidden(tmp_path, monkeypatch) -> None:
 
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(auth._finish_login(EarlyCancelledClient(), "web"))
+
+
+
+def test_profile_contact_is_printed_after_new_pymax_login(capsys):
+    client = SimpleNamespace(
+        me=SimpleNamespace(contact=SimpleNamespace(first_name="Нина", id=345))
+    )
+
+    auth._print_me(client)
+
+    output = capsys.readouterr()
+    assert "Нина" in output.err
+    assert "id=345" in output.err

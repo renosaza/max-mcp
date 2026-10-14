@@ -32,6 +32,7 @@ uv run --with pytest pytest -q
 src/max_mcp/
   auth.py          авторизация и защита файлов сессии
   client.py        жизненный цикл PyMax-клиента
+  config.py        общий профиль версии MAX и параметры безопасности
   normalize.py     преобразование моделей PyMax в JSON-совместимые словари
   server.py        точка входа FastMCP
   tools/           MCP-инструменты

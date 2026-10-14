@@ -6,6 +6,8 @@
 
 ```bash
 claude mcp list
+# Если используется OpenAI Codex:
+codex mcp list
 ```
 
 Запустите сервер вручную, чтобы увидеть ошибку в терминале:
@@ -21,7 +23,24 @@ uv run max-mcp
 - каталог сессии принадлежит другому пользователю;
 - права каталога шире `0700` или права файла сессии шире `0600`;
 - сессия устарела;
-- установленная версия `maxapi-python` перестала соответствовать протоколу MAX.
+- установленная версия `maxapi-python` перестала соответствовать протоколу MAX;
+- для SMS-клиента не открывается `https://hashes.pymax.org/versions.json` или там отсутствует выбранная версия MAX.
+
+## Ошибка загрузки fingerprint / `VersionNotFoundError`
+
+Для профиля Android 26.35.1 PyMax 2.4.1 загружает fingerprint из HTTPS-каталога. Проверьте доступность адреса:
+
+```bash
+curl -fsS -o /dev/null -w '%{http_code}\n' https://hashes.pymax.org/versions.json
+```
+
+Если каталог временно недоступен, запустите SMS-клиент с версией из встроенного каталога:
+
+```bash
+MAX_MCP_APP_VERSION=26.28.0 uv run max-mcp
+```
+
+Для постоянного запуска из Codex укажите `MAX_MCP_APP_VERSION=26.28.0` в `~/.codex/config.toml`, в `[mcp_servers.max-mcp.env]`; либо перерегистрируйте сервер через `codex mcp add max-mcp --env MAX_MCP_APP_VERSION=26.28.0 -- ...`. Не удаляйте сессию ради смены версии приложения.
 
 ## Повторный вход
 

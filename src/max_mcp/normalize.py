@@ -65,6 +65,11 @@ def attach_to_dict(att: Any) -> dict[str, Any]:
 
 
 def _reply_to_id(msg: Any, d: dict[str, Any]) -> int | None:
+    link = _value(d, "link", msg)
+    if link is not None:
+        link_data = _dump(link)
+        if _enum_text(_value(link_data, "type", link)) == "REPLY":
+            return _entity_id(_value(link_data, "message", link))
     msg_type = _enum_text(_value(d, "type", msg))
     if msg_type == "REPLY":
         return _value(d, "prev_message_id", msg)

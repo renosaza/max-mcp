@@ -1,6 +1,6 @@
 # max-mcp
 
-Локальный MCP-сервер для работы с пользовательской сессией MAX из Claude Code и других MCP-клиентов.
+Локальный MCP-сервер для работы с пользовательской сессией MAX из OpenAI Codex CLI, Claude Code и других MCP-клиентов.
 
 ## Возможности
 
@@ -23,7 +23,7 @@
 - macOS или Linux;
 - Python 3.11–3.13;
 - [`uv`](https://github.com/astral-sh/uv);
-- Claude Code или другой клиент с поддержкой MCP stdio.
+- Codex CLI, Claude Code или другой клиент с поддержкой MCP stdio.
 
 ## Быстрый запуск
 
@@ -53,7 +53,41 @@ uv run max-mcp-login login-sms --phone +79991234567
 
 Сессия хранится в `~/.max-mcp/`. Каталог получает права `0700`, файлы сессии — `0600`.
 
-### 3. Подключение к Claude Code
+Для входа по SMS используется профиль MAX Android **26.35.1** (актуальная версия в RuStore на 14.10.2026) и `maxapi-python==2.4.1`. Fingerprint версии 26.35.1 загружается из [каталога PyMax](https://hashes.pymax.org/versions.json) при подключении к MAX, поэтому для SMS-клиента нужен доступ к этому HTTPS-адресу. Сохранённые сессии удалять не нужно.
+
+Версию можно переопределить, если MAX обновился (передавайте одну и ту же переменную при SMS-входе и запуске сервера):
+
+```bash
+MAX_MCP_APP_VERSION=26.35.1 uv run max-mcp-login login-sms --phone +79991234567
+MAX_MCP_APP_VERSION=26.35.1 uv run max-mcp
+```
+
+Если каталог недоступен, можно выбрать одну из встроенных в PyMax версий, например `MAX_MCP_APP_VERSION=26.28.0`, без дополнительного сетевого запроса за fingerprint. QR-вход использует отдельный `WebClient` и web-профиль, предоставленный PyMax.
+
+### 3. Подключение к Codex CLI
+
+```bash
+codex mcp add max-mcp -- "$(command -v uv)" run --directory "$HOME/max-mcp" max-mcp
+codex mcp list
+codex mcp get max-mcp
+```
+
+Команда регистрирует локальный MCP-сервер в `~/.codex/config.toml`. Конфигурация общая для Codex CLI и расширения Codex для IDE. В новом сеансе Codex можно запросить: «Покажи 20 последних чатов MAX через max-mcp, ничего не отправляй».
+
+Если подключение обрывается по тайм-ауту, добавьте в существующую секцию `[mcp_servers.max-mcp]` файла `~/.codex/config.toml`:
+
+```toml
+startup_timeout_sec = 45
+tool_timeout_sec = 120
+```
+
+Удаление регистрации (сессия MAX при этом останется на диске):
+
+```bash
+codex mcp remove max-mcp
+```
+
+### 4. Подключение к Claude Code
 
 ```bash
 claude mcp add max-mcp --scope user \
@@ -122,6 +156,8 @@ uv run max-mcp-login login-qr
 - [Разработка и проверки](docs/DEVELOPMENT.md)
 
 ## Ограничения
+
+- Совместимость с MAX 26.35.1 проверена по каталогу fingerprint и публичным API PyMax, но **вход и отправка с реального аккаунта MAX не тестировались**;
 
 - поиск сообщений выполняется локально последовательным чтением истории;
 - схема `stats` и `reaction_info` зависит от ответа MAX и не зафиксирована;
