@@ -1,7 +1,7 @@
 [project]
 name = "max-mcp"
 version = "0.2.0"
-description = "Local stdio MCP server exposing MAX messenger (user session) to Claude Code"
+description = "Local stdio MCP server exposing MAX messenger (user session) to Codex and Claude Code"
 requires-python = ">=3.11,<3.14"
 dependencies = [
   "mcp[cli]>=1.0",
