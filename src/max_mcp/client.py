@@ -10,6 +10,8 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from pymax import Client, WebClient
 
+from .config import mobile_client_options, secure_client_config
+
 SESSION_DIR = pathlib.Path.home() / ".max-mcp"
 SESSION_FILE = "session.db"
 KIND_FILE = "session.kind"
@@ -81,10 +83,16 @@ def _build_client() -> Any:
             )
         return Client(
             phone=phone,
+            extra_config=secure_client_config(),
+            **mobile_client_options(),
             work_dir=str(SESSION_DIR),
             session_name=SESSION_FILE,
         )
-    return WebClient(work_dir=str(SESSION_DIR), session_name=SESSION_FILE)
+    return WebClient(
+        work_dir=str(SESSION_DIR),
+        session_name=SESSION_FILE,
+        extra_config=secure_client_config(),
+    )
 
 
 async def _wait_until_ready(
