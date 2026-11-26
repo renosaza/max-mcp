@@ -30,7 +30,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          uv run --with ruff ruff check src tests > ruff-report.txt 2>&1
+          uv run --frozen ruff check src tests > ruff-report.txt 2>&1
           status=$?
           cat ruff-report.txt
           echo "status=$status" >> "$GITHUB_OUTPUT"
@@ -45,4 +45,4 @@ jobs:
         if: steps.lint.outputs.status != '0'
         run: exit 1
       - name: Test
-        run: uv run --with pytest pytest -q
+        run: uv run --frozen pytest -q

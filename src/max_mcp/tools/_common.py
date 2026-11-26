@@ -2,6 +2,15 @@ from collections.abc import Sequence
 from typing import Any
 
 
+def parse_message_id(value: int | str) -> int:
+    """Accept decimal strings so JSON clients can preserve 64-bit message IDs."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.isascii() and value.removeprefix("-").isdigit():
+        return int(value)
+    raise ValueError("message id must be an integer or decimal string")
+
+
 def positive_int(name: str, value: int, *, maximum: int | None = None) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise ValueError(f"{name} must be a positive integer")
