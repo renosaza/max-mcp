@@ -85,28 +85,20 @@ def _print_me(client: Any) -> None:
 
 
 async def _finish_login(client: Any, kind: str, phone: str | None = None) -> None:
-    """Run a PyMax login and treat post-login cancellation as normal shutdown."""
-    logged_in = asyncio.Event()
-
-    @client.on_start()
-    async def _ready(current_client: Any) -> None:
-        _print_me(current_client)
-        logged_in.set()
-        await current_client.stop()
-
+    """Authenticate once without entering PyMax's long-running event loop."""
     try:
-        await client.start()
-    except asyncio.CancelledError:
-        # PyMax may cancel its WebSocket reader when stop() is called from on_start.
-        # That cancellation is expected only after the callback confirmed login.
-        if not logged_in.is_set():
-            raise
-
-    if not logged_in.is_set():
-        raise RuntimeError("Клиент MAX завершился до подтверждения входа")
-
-    _harden_session_file()
+        await client.connect()
+        if client.me is None:
+            raise RuntimeError("Клиент MAX завершился до подтверждения входа")
+        _harden_session_file()
+    except BaseException:
+        # Cleanup must not replace the login failure or cancellation.
+        await asyncio.gather(client.stop(), return_exceptions=True)
+        raise
+    else:
+        await client.stop()
     _mark_session(kind, phone=phone)
+    _print_me(client)
 
 
 async def _login_qr() -> None:

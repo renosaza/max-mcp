@@ -1,54 +1,26 @@
-import os
 import pathlib
 import stat
 from typing import Any
 
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
+from pydantic import StrictInt
 
 from ..client import AppCtx
 from ..normalize import message_to_dict
+from ._common import parse_message_id
+from ._paths import HOME, allowed_roots, reject_denied, require_allowed
 
 PHOTO_EXT = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
 VIDEO_EXT = {".mp4", ".mov", ".webm"}
 MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB
 
-_HOME = pathlib.Path.home().resolve()
-_DEFAULT_ROOTS = (_HOME / "Downloads", _HOME / "Documents", pathlib.Path("/tmp"))
-_DENY_ROOTS = (
-    _HOME / ".max-mcp",
-    _HOME / ".ssh",
-    _HOME / ".aws",
-    _HOME / ".gnupg",
-    _HOME / ".config",
-    _HOME / ".kube",
-    _HOME / ".docker",
-    _HOME / "Library" / "Keychains",
-    pathlib.Path("/etc"),
-    pathlib.Path("/private/etc"),
-    pathlib.Path("/var"),
-    pathlib.Path("/private/var"),
-)
+SEND_ROOTS_ENV = "MAX_MCP_SEND_ROOTS"
+_DEFAULT_ROOTS = (HOME / "Downloads", HOME / "Documents", pathlib.Path("/tmp"))
 
 
 def _allowed_roots() -> tuple[pathlib.Path, ...]:
-    env = os.environ.get("MAX_MCP_SEND_ROOTS")
-    if not env:
-        return tuple(path.resolve() for path in _DEFAULT_ROOTS if path.exists())
-    roots: list[pathlib.Path] = []
-    for raw in env.split(os.pathsep):
-        raw = raw.strip()
-        if raw:
-            roots.append(pathlib.Path(raw).expanduser().resolve())
-    return tuple(roots)
-
-
-def _is_within(child: pathlib.Path, parent: pathlib.Path) -> bool:
-    try:
-        child.relative_to(parent)
-    except ValueError:
-        return False
-    return True
+    return allowed_roots(SEND_ROOTS_ENV, _DEFAULT_ROOTS)
 
 
 def _validate_path(file_path: str) -> pathlib.Path:
@@ -72,23 +44,8 @@ def _validate_path(file_path: str) -> pathlib.Path:
     if st.st_size > MAX_FILE_BYTES:
         raise ValueError(f"file exceeds {MAX_FILE_BYTES} bytes")
 
-    for deny in _DENY_ROOTS:
-        try:
-            deny_resolved = deny.resolve()
-        except OSError:
-            continue
-        if _is_within(resolved, deny_resolved):
-            raise PermissionError(f"path is under denied root: {deny}")
-
-    roots = _allowed_roots()
-    if not roots:
-        raise PermissionError(
-            f"no allowed roots configured; set MAX_MCP_SEND_ROOTS=/path1{os.pathsep}/path2"
-        )
-    if not any(_is_within(resolved, root) for root in roots):
-        raise PermissionError(
-            f"path is outside allowed roots: {[str(root) for root in roots]}"
-        )
+    reject_denied(resolved)
+    require_allowed(resolved, _allowed_roots(), SEND_ROOTS_ENV)
     return resolved
 
 
@@ -109,7 +66,7 @@ def register(mcp: FastMCP) -> None:
         ctx: Context[ServerSession, AppCtx],
         chat_id: int,
         text: str,
-        reply_to_id: int | None = None,
+        reply_to_id: StrictInt | str | None = None,
     ) -> dict[str, Any]:
         """Отправить текстовое сообщение или ответ на указанное сообщение MAX."""
         if not isinstance(text, str) or not text:
@@ -118,7 +75,7 @@ def register(mcp: FastMCP) -> None:
         sent = await client.send_message(
             chat_id=chat_id,
             text=text,
-            reply_to=reply_to_id,
+            reply_to=parse_message_id(reply_to_id) if reply_to_id is not None else None,
         )
         return message_to_dict(sent)
 
